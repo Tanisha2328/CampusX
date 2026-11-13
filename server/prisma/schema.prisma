@@ -1,0 +1,452 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  STUDENT
+  FACULTY
+  CLUB_COORDINATOR
+  ADMIN
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+}
+
+enum AssignmentStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum ClassSessionStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum ServiceRequestCategory {
+  FACILITIES
+  IT_SUPPORT
+  ACADEMIC
+  FINANCIAL
+  LIBRARY
+  OTHER
+}
+
+enum ServiceRequestPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ServiceRequestStatus {
+  SUBMITTED
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+enum ServiceRequestNoteType {
+  PROGRESS
+  RESOLUTION
+}
+
+enum NotificationCategory {
+  ANNOUNCEMENT
+  EVENT
+  EVENT_REGISTRATION
+  FACILITY_BOOKING
+  SERVICE_REQUEST
+  ASSIGNMENT
+}
+
+enum NotificationEntityType {
+  ANNOUNCEMENT
+  EVENT
+  FACILITY_BOOKING
+  SERVICE_REQUEST
+  ASSIGNMENT
+}
+
+enum AnnouncementCategory {
+  GENERAL
+  ACADEMIC
+  EVENTS
+  URGENT
+}
+
+enum AnnouncementPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum FacilityBookingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(STUDENT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  enrollments       Enrollment[]
+  attendanceRecords AttendanceRecord[]
+  organizedEvents   Event[]              @relation("EventOrganizer")
+  eventRegistrations EventRegistration[]
+  submittedServiceRequests ServiceRequest[] @relation("ServiceRequestSubmitter")
+  assignedServiceRequests  ServiceRequest[] @relation("ServiceRequestAssignee")
+  serviceRequestNotes      ServiceRequestNote[]
+  notifications            Notification[]
+  authoredAnnouncements    Announcement[]       @relation("AnnouncementAuthor")
+  facilityBookings         FacilityBooking[]     @relation("FacilityBookingRequester")
+  reviewedFacilityBookings FacilityBooking[]     @relation("FacilityBookingReviewer")
+  issuedCertificates       EventCertificate[]
+  auditLogs                AuditLog[]
+}
+
+model AcademicTerm {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  offerings CourseOffering[]
+
+  @@index([startDate, endDate])
+}
+
+model Course {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  title       String
+  description String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  offerings CourseOffering[]
+}
+
+model CourseOffering {
+  id          String   @id @default(uuid()) @db.Uuid
+  termId      String   @db.Uuid
+  courseId    String   @db.Uuid
+  sectionCode String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  term        AcademicTerm   @relation(fields: [termId], references: [id], onDelete: Restrict)
+  course      Course         @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  enrollments Enrollment[]
+  sessions    ClassSession[]
+  assignments Assignment[]
+
+  @@unique([termId, courseId, sectionCode])
+  @@index([courseId, termId])
+}
+
+model Enrollment {
+  id         String           @id @default(uuid()) @db.Uuid
+  studentId  String           @db.Uuid
+  offeringId String           @db.Uuid
+  status     EnrollmentStatus @default(ACTIVE)
+  enrolledAt DateTime         @default(now()) @db.Timestamptz(3)
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime         @updatedAt @db.Timestamptz(3)
+
+  student           User               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  offering          CourseOffering     @relation(fields: [offeringId], references: [id], onDelete: Restrict)
+  attendanceRecords AttendanceRecord[] @relation("AttendanceEnrollment")
+
+  @@unique([studentId, offeringId])
+  @@index([offeringId, status])
+}
+
+model ClassSession {
+  id         String             @id @default(uuid()) @db.Uuid
+  offeringId String             @db.Uuid
+  startsAt   DateTime           @db.Timestamptz(3)
+  endsAt     DateTime           @db.Timestamptz(3)
+  location   String?
+  status     ClassSessionStatus @default(SCHEDULED)
+  createdAt  DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime           @updatedAt @db.Timestamptz(3)
+
+  offering          CourseOffering     @relation(fields: [offeringId], references: [id], onDelete: Restrict)
+  attendanceRecords AttendanceRecord[]
+  attendanceQrToken AttendanceQrToken?
+
+  @@unique([id, offeringId])
+  @@unique([offeringId, startsAt])
+  @@index([startsAt, status])
+}
+
+model Assignment {
+  id          String           @id @default(uuid()) @db.Uuid
+  offeringId  String           @db.Uuid
+  title       String
+  description String?
+  dueAt       DateTime         @db.Timestamptz(3)
+  status      AssignmentStatus @default(PUBLISHED)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
+
+  offering CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Restrict)
+
+  @@index([offeringId, status, dueAt])
+}
+
+model AttendanceRecord {
+  id             String           @id @default(uuid()) @db.Uuid
+  studentId      String           @db.Uuid
+  offeringId     String           @db.Uuid
+  classSessionId String           @db.Uuid
+  status         AttendanceStatus
+  recordedAt     DateTime         @default(now()) @db.Timestamptz(3)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+
+  student      User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment   @relation("AttendanceEnrollment", fields: [studentId, offeringId], references: [studentId, offeringId], onDelete: Cascade)
+  classSession ClassSession @relation(fields: [classSessionId, offeringId], references: [id, offeringId], onDelete: Restrict)
+
+  @@unique([studentId, classSessionId])
+  @@index([classSessionId, status])
+}
+
+model Event {
+  id                   String      @id @default(uuid()) @db.Uuid
+  title                String
+  description          String?
+  venue                String
+  startsAt             DateTime    @db.Timestamptz(3)
+  endsAt               DateTime    @db.Timestamptz(3)
+  capacity             Int
+  registrationDeadline DateTime    @db.Timestamptz(3)
+  status               EventStatus @default(DRAFT)
+  createdById          String      @db.Uuid
+  createdAt            DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime    @updatedAt @db.Timestamptz(3)
+
+  createdBy     User                @relation("EventOrganizer", fields: [createdById], references: [id], onDelete: Restrict)
+  registrations EventRegistration[]
+  announcements Announcement[]
+  certificates  EventCertificate[]
+
+  @@index([status, startsAt])
+  @@index([createdById, createdAt])
+}
+
+model EventRegistration {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventId   String   @db.Uuid
+  studentId String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  student User  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, studentId])
+  @@index([eventId, createdAt])
+  @@index([studentId, createdAt])
+}
+
+model ServiceRequest {
+  id             String                  @id @default(uuid()) @db.Uuid
+  studentId      String                  @db.Uuid
+  assignedToId   String?                 @db.Uuid
+  category       ServiceRequestCategory
+  priority       ServiceRequestPriority  @default(NORMAL)
+  status         ServiceRequestStatus    @default(SUBMITTED)
+  title          String
+  description    String
+  resolvedAt     DateTime?               @db.Timestamptz(3)
+  createdAt      DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                @updatedAt @db.Timestamptz(3)
+
+  student    User                 @relation("ServiceRequestSubmitter", fields: [studentId], references: [id], onDelete: Restrict)
+  assignedTo User?                @relation("ServiceRequestAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  notes      ServiceRequestNote[]
+
+  @@index([studentId, createdAt])
+  @@index([assignedToId, status, createdAt])
+  @@index([category, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model ServiceRequestNote {
+  id               String                  @id @default(uuid()) @db.Uuid
+  serviceRequestId String                  @db.Uuid
+  authorId         String                  @db.Uuid
+  type             ServiceRequestNoteType
+  content          String
+  createdAt        DateTime                @default(now()) @db.Timestamptz(3)
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+  author         User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([serviceRequestId, createdAt])
+}
+
+model Notification {
+  id               String                  @id @default(uuid()) @db.Uuid
+  recipientId      String                  @db.Uuid
+  title            String
+  message          String
+  category         NotificationCategory
+  relatedEntityId  String?                 @db.Uuid
+  relatedEntityType NotificationEntityType?
+  isRead           Boolean                 @default(false)
+  readAt           DateTime?               @db.Timestamptz(3)
+  dedupeKey        String?                 @unique
+  createdAt        DateTime                @default(now()) @db.Timestamptz(3)
+
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, createdAt])
+  @@index([recipientId, isRead, createdAt])
+}
+
+model Announcement {
+  id          String               @id @default(uuid()) @db.Uuid
+  createdById String               @db.Uuid
+  eventId     String?              @db.Uuid
+  title       String
+  message     String
+  category    AnnouncementCategory
+  priority    AnnouncementPriority @default(NORMAL)
+  status      AnnouncementStatus   @default(DRAFT)
+  publishAt   DateTime?            @db.Timestamptz(3)
+  publishedAt DateTime?            @db.Timestamptz(3)
+  expiresAt   DateTime?            @db.Timestamptz(3)
+  createdAt   DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime             @updatedAt @db.Timestamptz(3)
+
+  createdBy User   @relation("AnnouncementAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  event     Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([status, publishAt, expiresAt])
+  @@index([category, status, publishAt])
+  @@index([createdById, createdAt])
+  @@index([eventId])
+}
+
+model Facility {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  location    String
+  capacity    Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  bookings FacilityBooking[]
+
+  @@index([isActive, name])
+}
+
+model FacilityBooking {
+  id          String                @id @default(uuid()) @db.Uuid
+  facilityId  String                @db.Uuid
+  requesterId String                @db.Uuid
+  title       String
+  purpose     String
+  startsAt    DateTime              @db.Timestamptz(3)
+  endsAt      DateTime              @db.Timestamptz(3)
+  status      FacilityBookingStatus @default(PENDING)
+  reviewedById String?              @db.Uuid
+  reviewedAt  DateTime?             @db.Timestamptz(3)
+  createdAt   DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime              @updatedAt @db.Timestamptz(3)
+
+  facility  Facility @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+  requester User     @relation("FacilityBookingRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  reviewer  User?    @relation("FacilityBookingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([facilityId, status, startsAt, endsAt])
+  @@index([requesterId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AttendanceQrToken {
+  id             String   @id @default(uuid()) @db.Uuid
+  classSessionId String   @unique @db.Uuid
+  tokenHash      String   @unique
+  validFrom      DateTime @db.Timestamptz(3)
+  expiresAt      DateTime @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  classSession ClassSession @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model EventCertificate {
+  id          String   @id @default(uuid()) @db.Uuid
+  certificateId String @unique
+  eventId     String   @db.Uuid
+  studentId   String   @db.Uuid
+  issuedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  student User  @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([eventId, studentId])
+  @@index([studentId, issuedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @db.Uuid
+  action     String
+  entityType String
+  entityId   String   @db.Uuid
+  details    Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+}

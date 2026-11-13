@@ -1,0 +1,14 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated output
+node_modules/
+dist/
+server/src/generated/
+
+# Logs
+*.log
+npm-debug.log*
+*.zip

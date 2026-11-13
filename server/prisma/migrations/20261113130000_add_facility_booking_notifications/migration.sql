@@ -1,0 +1,2 @@
+ALTER TYPE "NotificationCategory" ADD VALUE 'FACILITY_BOOKING';
+ALTER TYPE "NotificationEntityType" ADD VALUE 'FACILITY_BOOKING';
